@@ -2036,7 +2036,7 @@ impl Device {
     }
 
     fn bind_texture_impl(
-        &mut self, slot: TextureSlot, id: gl::GLuint, target: gl::GLenum, set_swizzle: Option<Swizzle>
+        &mut self, slot: TextureSlot, id: gl::GLuint, target: gl::GLenum, set_swizzle: Option<Swizzle>, _filter: Option<TextureFilter>
     ) {
         debug_assert!(self.inside_frame);
 
@@ -2048,6 +2048,14 @@ impl Device {
                 self.gl.bind_texture(gl::TEXTURE_EXTERNAL_OES, 0);
             }
             self.gl.bind_texture(target, id);
+    
+            // The android emulator (with swiftshader or host virtualized gl) forgets texture
+            // sampler parameters set before the texture content is defined, resulting in the
+            // sampler returning black due to invalid default parameters. So if we're on Android
+            // then set the sampler parameters every time we bind the texture.
+            #[cfg(target_os = "android")]
+            self.set_texture_parameters(target, _filter.unwrap_or(TextureFilter::Linear));
+
             if let Some(swizzle) = set_swizzle {
                 if self.capabilities.supports_texture_swizzle {
                     let components = match swizzle {
@@ -2077,14 +2085,14 @@ impl Device {
         } else {
             None
         };
-        self.bind_texture_impl(slot.into(), texture.id, texture.target, set_swizzle);
+        self.bind_texture_impl(slot.into(), texture.id, texture.target, set_swizzle, Some(texture.filter));
     }
 
     pub fn bind_external_texture<S>(&mut self, slot: S, external_texture: &ExternalTexture)
     where
         S: Into<TextureSlot>,
     {
-        self.bind_texture_impl(slot.into(), external_texture.id, external_texture.target, None);
+        self.bind_texture_impl(slot.into(), external_texture.id, external_texture.target, None, None);
     }
 
     pub fn bind_read_target_impl(
